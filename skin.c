@@ -66,8 +66,8 @@ create_process(
     posix_spawn_file_actions_t file_actions;
 
     debug_assert(name != NULL);
-    debug_assert(args->buffer[args->size-1] == NULL);
-    debug_assert(envp->buffer[envp->size-1] == NULL);
+    debug_assert(array_end_idx(args, -1) == NULL);
+    debug_assert(array_end_idx(envp, -1) == NULL);
 
     char binary[PATH_MAX] = {0};
     struct stat bin_stat;
@@ -188,7 +188,7 @@ execute(
         else if(res == TOKEN_LPAREN)
         {
             array_push(&args, NULL);
-            if(execute(ls, envp, &args.buffer[args.size - 1],
+            if(execute(ls, envp, &array_end_idx(&args, -1),
                         EXECUTE_CAPTURE_OUT | EXECUTE_RPAREN) == -1)
             {
                 retval = -1; goto EXIT;

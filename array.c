@@ -65,4 +65,7 @@ struct string_arr
         (x)++)
 #define array_null_foreach(arr, x) array_null_foreach_offset(arr, 0, x)
 
+#define array_idx(arr, i) (arr)->buffer[(i)]
+#define array_end_idx(arr, i) (arr)->buffer[(arr)->size + (i)]
+
 #endif // ARRAY_C

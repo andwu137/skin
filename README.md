@@ -5,6 +5,7 @@ It is a shell for humans?
 - REPL
 - command substitutions
 - directory functions
+- command pipes
 
 # TODO
 - language
@@ -20,6 +21,6 @@ It is a shell for humans?
         - autocomplete
 - eval:
     - glob paths
-    - builtins: setenv, (redir)ect to file, pipe, bg, fg
+    - builtins: setenv, (redir)ect to file, bg, fg
 - process signals
     - if process is fg, then send SIGINT

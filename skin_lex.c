@@ -12,8 +12,7 @@
 
 enum token_t
 {
-    TOKEN_ERROR = -2,
-    TOKEN_CONTINUE = -1,
+    TOKEN_ERROR = -1,
     TOKEN_EOF = 0,
     TOKEN_LPAREN,
     TOKEN_RPAREN,
@@ -42,7 +41,7 @@ lex_init(
 int
 lex_next_pos(struct lex_state *restrict ls)
 {
-    if(ls->line_pos + 1 < ls->line_size) { ls->line_pos++; return 1; }
+    if(++ls->line_pos < ls->line_size) return 1;
     else return 0;
 }
 
@@ -94,15 +93,15 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
         }
         else if(lex_raw != NULL)
         {
+            // TODO: numbers
             if(isident(ls->line[ls->line_pos])) // ident
             {
                 array_push(lex_raw, ls->line[ls->line_pos]);
-                lex_next_pos(ls);
-                while(isident(ls->line[ls->line_pos]) ||
-                    ls->line[ls->line_pos] == '_')
+                while(lex_next_pos(ls)
+                    && (isident(ls->line[ls->line_pos])
+                        || isdigit(ls->line[ls->line_pos])))
                 {
                     array_push(lex_raw, ls->line[ls->line_pos]);
-                    if (!lex_next_pos(ls)) return(TOKEN_CONTINUE);
                 }
                 return(TOKEN_IDENT);
             }
@@ -118,35 +117,29 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
                         lex_next_pos(ls);
                         return(TOKEN_STRING);
                     }
-                    else if(ls->line_pos + 1 < ls->line_size)
+                    else if(ls->line_pos + 1 < ls->line_size
+                        && ls->line[ls->line_pos] == '\\')
                     {
-                        if(ls->line[ls->line_pos] == '\\')
+                        switch(ls->line[ls->line_pos + 1])
                         {
-                            switch(ls->line[ls->line_pos + 1])
-                            {
-                            case '(': { array_push(lex_raw, '('); } break;
-                            case ')': { array_push(lex_raw, ')'); } break;
-                            case '\n': { array_push(lex_raw, '\n'); } break;
-                            case '\t': { array_push(lex_raw, '\t'); } break;
-                            default: {
-                                array_push(lex_raw, ls->line[ls->line_pos]);
-                                array_push(lex_raw, ls->line[ls->line_pos + 1]);
-                            } break;
-                            }
-
-                            if (!lex_next_pos(ls)) return(TOKEN_CONTINUE);
-                            if (!lex_next_pos(ls)) return(TOKEN_CONTINUE);
-                        }
-                        else
-                        {
+                        case '(': { array_push(lex_raw, '('); } break;
+                        case ')': { array_push(lex_raw, ')'); } break;
+                        case '\'': { array_push(lex_raw, '\''); } break;
+                        case 'n': { array_push(lex_raw, '\n'); } break;
+                        case 't': { array_push(lex_raw, '\t'); } break;
+                        default: {
                             array_push(lex_raw, ls->line[ls->line_pos]);
-                            if (!lex_next_pos(ls)) return(TOKEN_CONTINUE);
+                            array_push(lex_raw, ls->line[ls->line_pos + 1]);
+                        } break;
                         }
+
+                        lex_next_pos(ls);
+                        lex_next_pos(ls);
                     }
                     else
                     {
                         array_push(lex_raw, ls->line[ls->line_pos]);
-                        if (!lex_next_pos(ls)) return(TOKEN_CONTINUE);
+                        if (!lex_next_pos(ls)) return(TOKEN_EOF);
                     }
                 }
             }

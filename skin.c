@@ -54,9 +54,9 @@ find_env(
     array_null_foreach(
             unsafe_cast(struct string_arr *, envp), e)
     {
-        if(strstr(*e, name) == *e) return *e + name_size + 1;
+        if(strstr(*e, name) == *e) return(*e + name_size + 1);
     }
-    return NULL;
+    return(NULL);
 }
 
 // WARN: create_process_bg
@@ -122,7 +122,7 @@ create_process_bg(
 EXIT_FAIL:
     // failure
     debug_named("failed to find binary: '%s'", name);
-    return(0);
+    return(-1);
 
 EXIT_CREATE:
     if(posix_spawn_file_actions_init(&file_actions))
@@ -156,7 +156,7 @@ create_process_fg(
         struct stdfd ofd)
 {
     pid_t pid = create_process_bg(name, args, envp, ofd);
-    return(waitpid(pid, NULL, 0));
+    return(pid == -1 ? -1 : waitpid(pid, NULL, 0));
 }
 
 // TODO: add bg processes to a stack
@@ -182,7 +182,7 @@ execute(
     int pipefd[2];
 
     /* parse */
-    res = lex_next(ls, &name);
+    res = lex_next(ls, &name); // TODO: allow macros
     if(flags & EXECUTE_LPAREN) { if(res != TOKEN_LPAREN) {retval = -1; goto EXIT;} }
 
     // name
@@ -361,8 +361,8 @@ execute(
 
     // spawn
     if(flags & EXECUTE_CAPTURE_OUT) pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
-    else if(flags & EXECUTE_BACKGROUND) retval = pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
-    else pid = create_process_fg(name.buffer, &args, envp, ov_stdfd);
+    else if(flags & EXECUTE_BACKGROUND) pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
+    else retval = pid = create_process_fg(name.buffer, &args, envp, ov_stdfd);
 
     // post child
     if(flags & EXECUTE_CAPTURE_OUT)
@@ -378,7 +378,7 @@ execute(
             array_resize(&buf);
         }
         if(close(pipefd[0]) == -1) die("failed to close pipefd");
-        waitpid(pid, NULL, 0);
+        retval = waitpid(pid, NULL, 0);
 
         buf.buffer[buf.size - 1] = '\0';
         *output = buf.buffer;
@@ -456,6 +456,7 @@ main(int argc, char **argv)
     struct lex_state ls = {0};
     // char temp_line[] = "| ls '(head -15) '(tail -5) '(head -4)";
     // char temp_line[] = "(| '(| '(| ls '(head -15\\\\\\)\\) '(tail -5\\)) '(head -4))";
+    // char temp_line[] = "ttttt";
     // lex_init(&ls, temp_line, sizeof(temp_line));
     // debug_named("retval: %d", execute(&ls, &envp, no_override_stdfd, NULL, 0));
 
@@ -464,7 +465,8 @@ main(int argc, char **argv)
     while(read_line(prompt, prompt_size, &line, &line_size, &envp, stdin, stdout) != -1)
     {
         lex_init(&ls, line, line_size);
-        execute(&ls, &envp, no_override_stdfd, NULL, 0);
+        // execute(&ls, &envp, no_override_stdfd, NULL, 0);
+        debug_named("retval: %d", execute(&ls, &envp, no_override_stdfd, NULL, 0));
     }
     free(line);
     array_destroy(&envp);

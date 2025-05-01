@@ -41,20 +41,20 @@ lex_init(
 int
 lex_next_pos(struct lex_state *restrict ls)
 {
-    if(++ls->line_pos < ls->line_size) return 1;
-    else return 0;
+    if(++ls->line_pos < ls->line_size) return(1);
+    else return(0);
 }
 
 uint8_t
 isident(char c)
 {
-    return isalpha(c)
+    return(isalpha(c)
         || (ispunct(c)
                 && c != '#'
                 && c != '"'
                 && c != '\''
                 && c != '('
-                && c != ')');
+                && c != ')'));
 }
 
 int64_t

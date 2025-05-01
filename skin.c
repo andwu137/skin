@@ -13,10 +13,13 @@
 #endif
 
 #include "array.c"
-#include "skin_builtin.c"
 #include "skin_lex.c"
 #include "skin.h"
 
+/* EXTERNALS */
+extern char **environ;
+
+/* TYPES */
 struct pipefd_t
 {
     int pipefd[2];
@@ -24,13 +27,11 @@ struct pipefd_t
 
 enum execute_flag
 {
-    EXECUTE_CAPTURE_OUT = 1 << 0,
-    EXECUTE_LPAREN = 1 << 1,
-    EXECUTE_RPAREN = 1 << 2,
+    EXECUTE_LPAREN = 1 << 0,
+    EXECUTE_RPAREN = 1 << 1,
+    EXECUTE_CAPTURE_OUT = 1 << 2,
     EXECUTE_BACKGROUND = 1 << 3,
 };
-
-extern char **environ;
 
 #define STDFD_NO_OVERRIDE_BASE {.in=-1, .out=-1, .err=-1, .close = NULL}
 #define STDFD_NO_OVERRIDE ((struct stdfd)STDFD_NO_OVERRIDE_BASE)
@@ -42,8 +43,17 @@ struct stdfd
     int *close;
     size_t close_size;
 };
-struct stdfd const no_override_stdfd = STDFD_NO_OVERRIDE_BASE;
 
+/* GLOBALS */
+struct stdfd const _no_override_stdfd = STDFD_NO_OVERRIDE_BASE;
+
+char _skin_cwd[PATH_MAX] = {0};
+char _skin_home[PATH_MAX] = {0};
+
+pid_t _skin_fg = 0;
+
+/* PROCESSES */
+#define fg_return(x) ((x) == -1 ? -1 : 0)
 
 char *
 find_env(
@@ -85,7 +95,7 @@ create_process_bg(
     {
         realpath(name, binary);
         if(stat(binary, &bin_stat) == 0
-            && (bin_stat.st_mode & S_IFMT) == S_IFREG)
+                && (bin_stat.st_mode & S_IFMT) == S_IFREG)
         {
             goto EXIT_CREATE;
         }
@@ -98,7 +108,7 @@ create_process_bg(
         /* NOTE: splits the PATH by ':'
          * replaces the ':' by '\0' before checking, reverts after the check
          * the tabbed in part is the check
-         * WARN: posix says that directories cannot contain ':'
+         * NOTE: posix says that directories cannot contain ':'
          */
         while(end != NULL)
         {
@@ -108,7 +118,7 @@ create_process_bg(
                 last_cpy = strncat(last_cpy, "/", PATH_MAX - (last_cpy - binary));
                 strncat(last_cpy, name, PATH_MAX - (last_cpy - binary));
                 if(stat(binary, &bin_stat) == 0
-                    && (bin_stat.st_mode & S_IFMT) == S_IFREG)
+                        && (bin_stat.st_mode & S_IFMT) == S_IFREG)
                 {
                     *end = ':';
                     goto EXIT_CREATE;
@@ -156,7 +166,48 @@ create_process_fg(
         struct stdfd ofd)
 {
     pid_t pid = create_process_bg(name, args, envp, ofd);
-    return(pid == -1 ? -1 : waitpid(pid, NULL, 0));
+    if(pid == -1)
+    {
+        return -1;
+    }
+    else
+    {
+        _skin_fg = pid;
+        return fg_return(waitpid(pid, NULL, 0));
+    }
+}
+
+/* BUILTINS */
+void
+skin_cd(
+        char *restrict dir,
+        char **restrict envp)
+{
+    if (dir == NULL) return;
+
+    char cwd[PATH_MAX] = {0};
+    if (dir[0] == '/') strncpy(cwd, dir, PATH_MAX);
+    else realpath(dir, cwd);
+
+    struct stat file_stat;
+    if (stat(cwd, &file_stat) == 0 && (file_stat.st_mode & S_IFMT) == S_IFDIR)
+    {
+        strncpy(_skin_cwd, cwd, PATH_MAX);
+    }
+    else
+    {
+        fprintf(stderr, "directory does not exist\n");
+        return;
+    }
+    chdir(_skin_cwd);
+}
+
+/* MAIN */
+void
+execute_pre_capture_out(int *pipefd, struct stdfd *ov_stdfd)
+{
+    if(pipe(pipefd) == -1) die("failed to spawn pipe");
+    ov_stdfd->out = pipefd[1];
 }
 
 // TODO: add bg processes to a stack
@@ -168,6 +219,7 @@ execute(
         char **restrict output,
         uint32_t flags)
 {
+    pid_t pid = -1;
     int retval = 0;
     int64_t res;
     struct string temp_str = {0};
@@ -205,7 +257,7 @@ execute(
         else if(res == TOKEN_LPAREN)
         {
             array_push(&args, NULL);
-            if(execute(ls, envp, no_override_stdfd, &array_end_idx(&args, -1),
+            if(execute(ls, envp, _no_override_stdfd, &array_end_idx(&args, -1),
                         EXECUTE_CAPTURE_OUT | EXECUTE_RPAREN) == -1)
             {
                 retval = -1;
@@ -228,16 +280,16 @@ execute(
     if(strcmp(name.buffer, "cd") == 0)
     {
         char *path = NULL;
-        if(num_args == 0) path = builtin_home;
+        if(num_args == 0) path = _skin_home;
         else if(num_args == 1) path = args.buffer[1];
         else {debug_named("cd: requires 0 or 1 arguments"); retval = -1; goto EXIT;}
-        builtin_cd(path, envp->buffer);
+        skin_cd(path, envp->buffer);
         goto EXIT;
     }
     else if(strcmp(name.buffer, "getcwd") == 0)
     {
-        if(flags & EXECUTE_CAPTURE_OUT) *output = strdup(builtin_cwd);
-        else printf("%s", builtin_cwd);
+        if(flags & EXECUTE_CAPTURE_OUT) *output = strdup(_skin_cwd);
+        else printf("%s", _skin_cwd);
         goto EXIT;
     }
     else if(strcmp(name.buffer, "getenv") == 0)
@@ -298,7 +350,8 @@ execute(
             }
             else
             {
-                new_ov_stdfd.out = ov_stdfd.out;
+                if(flags & EXECUTE_CAPTURE_OUT) execute_pre_capture_out(pipefd, &new_ov_stdfd);
+                else new_ov_stdfd.out = ov_stdfd.out;
             }
 
             if(i != 0)
@@ -339,11 +392,18 @@ execute(
         {
             close(pipefd_arr[i].pipefd[0]);
             close(pipefd_arr[i].pipefd[1]);
-            waitpid(pid_arr[i], NULL, 0);
+            if((retval = waitpid(pid_arr[i], NULL, 0)) == -1) goto EXIT;
         }
+
+        retval = 0;
+        if((flags & (EXECUTE_CAPTURE_OUT | EXECUTE_BACKGROUND)) == 0)
+            retval = fg_return(waitpid(pid_arr[num_args - 1], NULL, 0));
+        else retval = pid = pid_arr[num_args - 1];
+
         free(pipefd_arr);
         free(pid_arr);
-        goto EXIT;
+        if(flags & EXECUTE_CAPTURE_OUT) goto EXIT_POST_CHILD;
+        else goto EXIT;
     }
     else if(strcmp(name.buffer, "exit") == 0)
     {
@@ -352,19 +412,15 @@ execute(
     }
 
     // prep child
-    pid_t pid = 0;
-    if(flags & EXECUTE_CAPTURE_OUT)
-    {
-        if(pipe(pipefd) == -1) die("failed to spawn pipe");
-        ov_stdfd.out = pipefd[1];
-    }
+    if(flags & EXECUTE_CAPTURE_OUT) execute_pre_capture_out(pipefd, &ov_stdfd);
 
     // spawn
     if(flags & EXECUTE_CAPTURE_OUT) pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
-    else if(flags & EXECUTE_BACKGROUND) pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
-    else retval = pid = create_process_fg(name.buffer, &args, envp, ov_stdfd);
+    else if(flags & EXECUTE_BACKGROUND) retval = pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
+    else retval = fg_return(pid = create_process_fg(name.buffer, &args, envp, ov_stdfd));
 
     // post child
+EXIT_POST_CHILD:
     if(flags & EXECUTE_CAPTURE_OUT)
     {
         if(close(pipefd[1]) == -1) die("failed to close pipefd");
@@ -377,8 +433,8 @@ execute(
             buf.size += read_size;
             array_resize(&buf);
         }
-        if(close(pipefd[0]) == -1) die("failed to close pipefd");
-        retval = waitpid(pid, NULL, 0);
+        if(pipefd[0] != -1 && close(pipefd[0]) == -1) die("failed to close pipefd");
+        retval = fg_return(waitpid(pid, NULL, 0));
 
         buf.buffer[buf.size - 1] = '\0';
         *output = buf.buffer;
@@ -403,7 +459,7 @@ read_line(
 {
     struct lex_state ls = {0};
     lex_init(&ls, prompt, prompt_size);
-    execute(&ls, envp, no_override_stdfd, NULL, 0);
+    execute(&ls, envp, _no_override_stdfd, NULL, 0);
     fflush(out);
     return(getline(line, size, in));
 }
@@ -429,7 +485,7 @@ main(int argc, char **argv)
         array_init(&envp, 128);
         char **e = environ;
         while(*e != NULL) {
-            if(strstr(*e, "HOME") == *e) strncpy(builtin_home, *e + sizeof("HOME"), PATH_MAX);
+            if(strstr(*e, "HOME") == *e) strncpy(_skin_home, *e + sizeof("HOME"), PATH_MAX);
             if(strstr(*e, "SHELL") == *e) { array_push(&envp, shell_path); }
             else array_push(&envp, *e);
             e++;
@@ -437,7 +493,7 @@ main(int argc, char **argv)
         array_push(&envp, NULL);
     }
 
-    if (getcwd(builtin_cwd, sizeof(builtin_cwd)) == NULL) die("unable to get cwd");
+    if (getcwd(_skin_cwd, sizeof(_skin_cwd)) == NULL) die("unable to get cwd");
 
     char *prompt = "(printf '(\\n%s\\n$ ) (getcwd))";
     size_t prompt_size = strlen(prompt);
@@ -454,19 +510,44 @@ main(int argc, char **argv)
 
     /* main */
     struct lex_state ls = {0};
-    // char temp_line[] = "| ls '(head -15) '(tail -5) '(head -4)";
-    // char temp_line[] = "(| '(| '(| ls '(head -15\\\\\\)\\) '(tail -5\\)) '(head -4))";
-    // char temp_line[] = "ttttt";
-    // lex_init(&ls, temp_line, sizeof(temp_line));
-    // debug_named("retval: %d", execute(&ls, &envp, no_override_stdfd, NULL, 0));
+
+#if DEBUG
+{
+    int retval = 0;
+    char *output = NULL;
+    char temp_lines[][256] = {"echo hi", "| ls '(xargs echo)"};
+    uint32_t flags[] = {
+        0, EXECUTE_CAPTURE_OUT, EXECUTE_BACKGROUND,
+        EXECUTE_CAPTURE_OUT | EXECUTE_BACKGROUND
+    };
+    for(size_t i = 0;
+        i < sizeof(temp_lines) / sizeof(*temp_lines);
+        i++)
+    {
+        puts("\n>>>>>> NEW TEST TYPE");
+        for(size_t j = 0;
+            j < sizeof(flags) / sizeof(*flags);
+            j++)
+        {
+            puts("\n>>> NEW TEST");
+            lex_init(&ls, temp_lines[i], sizeof(temp_lines[i]));
+            retval = execute(&ls, &envp, _no_override_stdfd, &output, flags[j]);
+            debug_named("[retval: %d %s]", retval, output);
+            if(retval > 0) waitpid(retval, NULL, 0);
+            if(flags[j] & EXECUTE_CAPTURE_OUT) {free(output); output = NULL;}
+            printf("push: "); fflush(stdout); getchar();
+        }
+    }
+}
+#endif
 
     char *line = NULL;
     size_t line_size = 0;
     while(read_line(prompt, prompt_size, &line, &line_size, &envp, stdin, stdout) != -1)
     {
         lex_init(&ls, line, line_size);
-        // execute(&ls, &envp, no_override_stdfd, NULL, 0);
-        debug_named("retval: %d", execute(&ls, &envp, no_override_stdfd, NULL, 0));
+        // execute(&ls, &envp, _no_override_stdfd, NULL, 0);
+        debug_named("retval: %d", execute(&ls, &envp, _no_override_stdfd, NULL, 0));
     }
     free(line);
     array_destroy(&envp);

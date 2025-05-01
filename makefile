@@ -4,7 +4,7 @@ all:
 	$(CC) $(FLAGS) skin.c -o skin
 
 debug:
-	$(CC) -g $(FLAGS) skin.c -o skin
+	$(CC) -DDEBUG=1 -g $(FLAGS) skin.c -o skin
 
 clean:
 	rm -f skin

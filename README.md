@@ -9,6 +9,10 @@ It is a shell for humans?
 
 # TODO
 - language
+    - return / error codes
+    - loops
+    - define functions
+        - allow functions to work in name position
     - call stack
     - math ops
 - read/eval:
@@ -24,3 +28,4 @@ It is a shell for humans?
     - builtins: setenv, (redir)ect to file, bg, fg
 - process signals
     - if process is fg, then send SIGINT
+    - usr cancel

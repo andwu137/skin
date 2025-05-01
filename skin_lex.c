@@ -110,7 +110,7 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
                 lex_next_pos(ls);
                 if(ls->line[ls->line_pos] != '(') return(TOKEN_ERROR);
                 lex_next_pos(ls);
-                while(1)
+                while(1) // TODO: redesign the strings
                 {
                     if(ls->line[ls->line_pos] == ')')
                     {
@@ -124,7 +124,7 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
                         {
                         case '(': { array_push(lex_raw, '('); } break;
                         case ')': { array_push(lex_raw, ')'); } break;
-                        case '\'': { array_push(lex_raw, '\''); } break;
+                        case '\\': { array_push(lex_raw, '\\'); } break;
                         case 'n': { array_push(lex_raw, '\n'); } break;
                         case 't': { array_push(lex_raw, '\t'); } break;
                         default: {
@@ -132,7 +132,6 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
                             array_push(lex_raw, ls->line[ls->line_pos + 1]);
                         } break;
                         }
-
                         lex_next_pos(ls);
                         lex_next_pos(ls);
                     }

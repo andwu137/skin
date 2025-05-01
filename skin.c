@@ -455,6 +455,7 @@ main(int argc, char **argv)
     /* main */
     struct lex_state ls = {0};
     // char temp_line[] = "| ls '(head -15) '(tail -5) '(head -4)";
+    // char temp_line[] = "(| '(| '(| ls '(head -15\\\\\\)\\) '(tail -5\\)) '(head -4))";
     // lex_init(&ls, temp_line, sizeof(temp_line));
     // debug_named("retval: %d", execute(&ls, &envp, no_override_stdfd, NULL, 0));
 

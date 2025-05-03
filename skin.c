@@ -423,6 +423,25 @@ execute(
         // TODO: clean exit
         exit(0);
     }
+    else if(strcmp(name.buffer, "concat") == 0)
+    {
+        if(flags & EXECUTE_CAPTURE_OUT)
+        {
+            array_init(&temp_str, 32);
+        }
+        array_null_foreach_offset(&args, 1, x)
+        {
+            if(flags & EXECUTE_CAPTURE_OUT) { array_concat(&temp_str, *x, strlen(*x)); }
+            else printf("%s", *x);
+        }
+        putchar('\n');
+        if(flags & EXECUTE_CAPTURE_OUT)
+        {
+            array_push(&temp_str, '\0');
+            *output = temp_str.buffer;
+        }
+        goto EXIT;
+    }
 
     // prep child
     if(flags & EXECUTE_CAPTURE_OUT) execute_pre_capture_out(pipefd, &ov_stdfd);

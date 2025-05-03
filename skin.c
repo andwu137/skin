@@ -307,7 +307,7 @@ execute(
     }
     else if(strcmp(name.buffer, "getenv") == 0)
     {
-        if(num_args == 0) {debug_named("cd: requires >0 arguments"); retval = -1; goto EXIT;}
+        if(num_args == 0) {debug_named("getenv: requires >0 arguments"); retval = -1; goto EXIT;}
         if(flags & EXECUTE_CAPTURE_OUT)
         {
             array_init(&temp_str, num_args * 16);

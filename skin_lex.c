@@ -68,7 +68,7 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
 {
     if(lex_raw != NULL)
     {
-        memset(lex_raw->buffer, 0, lex_raw->size);
+        memset(lex_raw->buffer, 0, lex_raw->capacity);
         lex_raw->size = 0;
     }
 

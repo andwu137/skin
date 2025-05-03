@@ -51,20 +51,25 @@ char _skin_cwd[PATH_MAX] = {0};
 char _skin_home[PATH_MAX] = {0};
 
 pid_t _skin_fg = 0;
+int _return_code = 0;
 
 /* PROCESSES */
-#define fg_return(x) ((x) == -1 ? -1 : 0)
-
 char *
 find_env(
         struct string_arr const *restrict envp,
-        char const *restrict name,
-        size_t name_size)
+        char const *restrict name)
 {
+    char *substring = 0;
+    size_t name_size = strlen(name);
     array_null_foreach(
             unsafe_cast(struct string_arr *, envp), e)
     {
-        if(strstr(*e, name) == *e) return(*e + name_size + 1);
+        if(strstr(*e, name) == *e)
+        {
+            substring = strchr(*e, '=');
+            if((substring - *e) - name_size != 0) continue;
+            else return(substring + 1);
+        }
     }
     return(NULL);
 }
@@ -102,7 +107,7 @@ create_process_bg(
     }
     else // find in PATH
     {
-        char *p = find_env(envp, "PATH", sizeof("PATH") - 1);
+        char *p = find_env(envp, "PATH");
         if(p == NULL) goto EXIT_FAIL;
         char *end = strchr(p, ':');
         /* NOTE: splits the PATH by ':'
@@ -173,7 +178,7 @@ create_process_fg(
     else
     {
         _skin_fg = pid;
-        return fg_return(waitpid(pid, NULL, 0));
+        return waitpid(pid, NULL, 0);
     }
 }
 
@@ -235,6 +240,7 @@ execute(
 
     /* parse */
     res = lex_next(ls, &name); // TODO: allow macros
+    if(res == TOKEN_EOF) { retval = 0; goto EXIT; }
     if(flags & EXECUTE_LPAREN) { if(res != TOKEN_LPAREN) {retval = -1; goto EXIT;} }
 
     // name
@@ -248,6 +254,7 @@ execute(
     while(1)
     {
         res = lex_next(ls, &temp_str);
+        // TODO: numbers
         if(res == TOKEN_STRING || res == TOKEN_IDENT)
         {
             array_push(&temp_str, '\0');
@@ -286,6 +293,12 @@ execute(
         skin_cd(path, envp->buffer);
         goto EXIT;
     }
+    else if(strcmp(name.buffer, "gethome") == 0)
+    {
+        if(flags & EXECUTE_CAPTURE_OUT) *output = strdup(_skin_home);
+        else printf("%s", _skin_home);
+        goto EXIT;
+    }
     else if(strcmp(name.buffer, "getcwd") == 0)
     {
         if(flags & EXECUTE_CAPTURE_OUT) *output = strdup(_skin_cwd);
@@ -302,7 +315,7 @@ execute(
 
         array_null_foreach_offset(&args, 1, x)
         {
-            char *p = find_env(envp, *x, strlen(*x));
+            char *p = find_env(envp, *x);
             if(p != NULL)
             {
                 if(flags & EXECUTE_CAPTURE_OUT) { array_concat(&temp_str, p, strlen(p)); }
@@ -397,7 +410,7 @@ execute(
 
         retval = 0;
         if((flags & (EXECUTE_CAPTURE_OUT | EXECUTE_BACKGROUND)) == 0)
-            retval = fg_return(waitpid(pid_arr[num_args - 1], NULL, 0));
+            retval = waitpid(pid_arr[num_args - 1], NULL, 0);
         else retval = pid = pid_arr[num_args - 1];
 
         free(pipefd_arr);
@@ -417,7 +430,7 @@ execute(
     // spawn
     if(flags & EXECUTE_CAPTURE_OUT) pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
     else if(flags & EXECUTE_BACKGROUND) retval = pid = create_process_bg(name.buffer, &args, envp, ov_stdfd);
-    else retval = fg_return(pid = create_process_fg(name.buffer, &args, envp, ov_stdfd));
+    else retval = pid = create_process_fg(name.buffer, &args, envp, ov_stdfd);
 
     // post child
 EXIT_POST_CHILD:
@@ -434,7 +447,7 @@ EXIT_POST_CHILD:
             array_resize(&buf);
         }
         if(pipefd[0] != -1 && close(pipefd[0]) == -1) die("failed to close pipefd");
-        retval = fg_return(waitpid(pid, NULL, 0));
+        retval = waitpid(pid, NULL, 0);
 
         buf.buffer[buf.size - 1] = '\0';
         *output = buf.buffer;
@@ -444,7 +457,7 @@ EXIT:
     /* clean */
     array_clear(array_null_foreach, &args);
     array_destroy(&args);
-    return(retval);
+    return(retval < 0 ? retval : 0);
 }
 
 ssize_t
@@ -515,7 +528,10 @@ main(int argc, char **argv)
 {
     int retval = 0;
     char *output = NULL;
-    char temp_lines[][256] = {"echo hi", "| ls '(xargs echo)"};
+    char temp_lines[][256] = {
+        "echo hi",
+        "| ls '(xargs echo)"
+    };
     uint32_t flags[] = {
         0, EXECUTE_CAPTURE_OUT, EXECUTE_BACKGROUND,
         EXECUTE_CAPTURE_OUT | EXECUTE_BACKGROUND
@@ -543,11 +559,15 @@ main(int argc, char **argv)
 
     char *line = NULL;
     size_t line_size = 0;
-    while(read_line(prompt, prompt_size, &line, &line_size, &envp, stdin, stdout) != -1)
+    size_t line_capacity = 0;
+    while((line_size = read_line(prompt, prompt_size, &line, &line_capacity, &envp, stdin, stdout)) != -1)
     {
-        lex_init(&ls, line, line_size);
-        // execute(&ls, &envp, _no_override_stdfd, NULL, 0);
-        debug_named("retval: %d", execute(&ls, &envp, _no_override_stdfd, NULL, 0));
+        lex_init(&ls, line, line_size - 1);
+        do
+        {
+            _return_code = execute(&ls, &envp, _no_override_stdfd, NULL, 0);
+            debug_named("retval: %d", _return_code);
+        } while(!lex_isfinished(&ls));
     }
     free(line);
     array_destroy(&envp);

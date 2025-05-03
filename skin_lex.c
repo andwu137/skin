@@ -46,6 +46,12 @@ lex_next_pos(struct lex_state *restrict ls)
 }
 
 uint8_t
+lex_isfinished(struct lex_state *restrict ls)
+{
+    return(ls->line_size <= ls->line_pos);
+}
+
+uint8_t
 isident(char c)
 {
     return(isalpha(c)

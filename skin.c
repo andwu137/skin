@@ -56,6 +56,17 @@ pid_t _skin_fg = 0;
 int _skin_return_code = 0;
 uint8_t _skin_exit = 0;
 
+/* UTILS */
+void
+trim_end(char *restrict arr, size_t arr_size, char e)
+{
+    for(size_t i = arr_size - 1; i >= 0; i--)
+    {
+        if(arr[i] == e) arr[i] = '\0';
+        else break;
+    }
+}
+
 /* PROCESSES */
 // WARN: create_process_bg
 // name must be null terminated
@@ -240,15 +251,30 @@ execute(
     size_t num_args = args.size - 2;
     if(strcmp(name.buffer, "cd") == 0)
     {
+        uint8_t alloc_string = 0;
         char *dir = NULL;
-        if(num_args == 0) dir = _skin_home;
-        else if(num_args == 1) dir = args.buffer[1];
-        else {debug_named("cd: requires 0 or 1 arguments"); retval = -1; goto EXIT;}
+        if(num_args == 0) {dir = _skin_home;}
+        else if(num_args == 1)
+        {
+            dir = args.buffer[1];
+            trim_end(dir, strlen(dir), '\n');
+        }
+        else
+        {
+            alloc_string = 1;
+            array_init(&temp_str, num_args * 8);
+            array_null_foreach_offset(&args, 1, x)
+            {
+                array_concat(&temp_str, *x, strlen(*x));
+            }
+            array_push(&temp_str, '\0');
+            dir = temp_str.buffer;
+        }
 
-        if (dir == NULL) {retval = -1; goto EXIT;}
+        if (dir == NULL) {retval = -1; goto BUILTIN_CD_EXIT;}
 
         char cwd[PATH_MAX] = {0};
-        if(realpath(dir, cwd) == NULL) {debug_named("cd: failed to resolve path"); retval = -1; goto EXIT;}
+        if(realpath(dir, cwd) == NULL) {debug_named("cd: failed to resolve path"); retval = -1; goto BUILTIN_CD_EXIT;}
 
         struct stat file_stat;
         if (stat(cwd, &file_stat) == 0 && (file_stat.st_mode & S_IFMT) == S_IFDIR)
@@ -262,6 +288,9 @@ execute(
             debug_named("directory does not exist\n");
             retval = -1;
         }
+
+BUILTIN_CD_EXIT:
+        if(alloc_string && dir != NULL) free(dir);
         goto EXIT;
     }
     else if(strcmp(name.buffer, "gethome") == 0 || strcmp(name.buffer, "~") == 0)
@@ -512,7 +541,7 @@ execute(
         _skin_exit = 1;
         goto EXIT;
     }
-    else if(strcmp(name.buffer, "concat") == 0)
+    else if(strcmp(name.buffer, "concat") == 0 || strcmp(name.buffer, "<>") == 0)
     {
         if(flags & EXECUTE_CAPTURE_OUT) {array_init(&temp_str, num_args * 8);}
 

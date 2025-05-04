@@ -55,6 +55,7 @@ uint8_t
 isident(char c)
 {
     return(isalpha(c)
+        || isdigit(c)
         || (ispunct(c)
                 && c != '#'
                 && c != '"'
@@ -103,9 +104,7 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
             if(isident(ls->line[ls->line_pos])) // ident
             {
                 array_push(lex_raw, ls->line[ls->line_pos]);
-                while(lex_next_pos(ls)
-                    && (isident(ls->line[ls->line_pos])
-                        || isdigit(ls->line[ls->line_pos])))
+                while(lex_next_pos(ls) && isident(ls->line[ls->line_pos]))
                 {
                     array_push(lex_raw, ls->line[ls->line_pos]);
                 }

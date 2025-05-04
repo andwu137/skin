@@ -245,22 +245,20 @@ execute(
         if (dir == NULL) {retval = -1; goto EXIT;}
 
         char cwd[PATH_MAX] = {0};
-        if (dir[0] == '/') strncpy(cwd, dir, PATH_MAX);
-        else realpath(dir, cwd);
+        if(realpath(dir, cwd) == NULL) {debug_named("cd: failed to resolve path"); retval = -1; goto EXIT;}
 
         struct stat file_stat;
         if (stat(cwd, &file_stat) == 0 && (file_stat.st_mode & S_IFMT) == S_IFDIR)
         {
             strncpy(_skin_cwd, cwd, PATH_MAX);
+            chdir(_skin_cwd);
+            retval = setenv("PWD", _skin_cwd, 1);
         }
         else
         {
             debug_named("directory does not exist\n");
             retval = -1;
-            goto EXIT;
         }
-        chdir(_skin_cwd);
-        retval = setenv("PWD", _skin_cwd, 1);
         goto EXIT;
     }
     else if(strcmp(name.buffer, "gethome") == 0 || strcmp(name.buffer, "~") == 0)

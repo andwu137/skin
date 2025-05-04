@@ -347,6 +347,34 @@ execute(
         }
         goto EXIT;
     }
+    else if(strcmp(name.buffer, "redirect") == 0)
+    {
+        if(num_args != 3) {debug_named("redirect: requires 3 arguments"); retval = -1; goto EXIT;}
+        uint8_t found = 0;
+        mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP;
+        if(strcmp(args.buffer[1], "in") == 0)
+        {
+            found = 1;
+            ov_stdfd.in = open(args.buffer[2], O_RDONLY);
+        }
+        else if(strcmp(args.buffer[1], "out") == 0)
+        {
+            found = 1;
+            ov_stdfd.out = open(args.buffer[2], O_WRONLY|O_CREAT|O_TRUNC, mode);
+        }
+        else if(strcmp(args.buffer[1], "append") == 0)
+        {
+            found = 1;
+            ov_stdfd.out = open(args.buffer[2], O_WRONLY|O_CREAT|O_APPEND, mode);
+        }
+
+        if(ov_stdfd.out == -1) {debug_named("redirect: could not open file"); retval = -1; goto EXIT;}
+        if(!found) retval = -1;
+
+        lex_init(ls, args.buffer[3], strlen(args.buffer[3]));
+        retval = execute(ls, ov_stdfd, output, flags);
+        goto EXIT;
+    }
     else if(strcmp(name.buffer, "pipe") == 0 || strcmp(name.buffer, "|") == 0)
     {
         if(num_args < 2) {debug_named("pipe: requires >=2 arguments"); retval = -1; goto EXIT;}

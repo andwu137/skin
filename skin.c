@@ -199,6 +199,7 @@ execute(
 
     struct string name = {0};
     array_init(&name, 8);
+    array_push(&args, name.buffer);
 
     int pipefd[2];
 
@@ -211,7 +212,7 @@ execute(
     if(res == TOKEN_LPAREN) res = lex_next(ls, &name);
     if(res != TOKEN_IDENT && res != TOKEN_STRING) {retval = -1; goto EXIT;}
     array_push(&name, '\0');
-    array_push(&args, name.buffer);
+    array_end_idx(&args, -1) = name.buffer;
 
     // args
     array_init(&temp_str, 8);

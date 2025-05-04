@@ -305,6 +305,29 @@ execute(
         }
         goto EXIT;
     }
+    else if(strcmp(name.buffer, "realpath") == 0)
+    {
+        if(num_args < 2) {debug_named("realpath: requires >0 arguments"); retval = -1; goto EXIT;}
+        if(flags & EXECUTE_CAPTURE_OUT)
+        {
+            struct string temp_str = {0};
+            array_init(&temp_str, PATH_MAX);
+            array_null_foreach_offset(&args, 1, a)
+            {
+                size_t old_size = temp_str.size;
+                temp_str.size += PATH_MAX - (temp_str.capacity - temp_str.size);
+                array_resize(&temp_str);
+                if(realpath(*a, &temp_str.buffer[old_size]) == NULL) {debug_named("realpath: failed to resolve path"); retval = -1; goto EXIT;}
+            }
+        }
+        else
+        {
+            array_null_foreach_offset(&args, 1, a)
+            {
+                printf("%s", *a);
+            }
+        }
+    }
     else if(strcmp(name.buffer, "setenv") == 0)
     {
         if(num_args < 2 || num_args % 2 != 0) {debug_named("setenv: requires x>=2 && iseven(x) arguments"); retval = -1; goto EXIT;}

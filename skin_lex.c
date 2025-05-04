@@ -149,11 +149,11 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
                 }
             }
         }
+
+        ls->line_pos = ls->line_size;
+        return(TOKEN_ERROR);
     }
 
-    if(ls->line_pos + 1 < ls->line_size) return(TOKEN_ERROR);
-
-    ls->line_pos++;
     return(TOKEN_EOF);
 }
 

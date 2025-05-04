@@ -1,7 +1,9 @@
+#include <glob.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wordexp.h>
 
 #if defined(__linux__)
 #include <linux/limits.h>
@@ -264,22 +266,20 @@ execute(
     else if(strcmp(name.buffer, "gethome") == 0 || strcmp(name.buffer, "~") == 0)
     {
         if(flags & EXECUTE_CAPTURE_OUT) *output = strdup(_skin_home);
-        else printf("%s", _skin_home);
+        else puts(_skin_home);
         goto EXIT;
     }
     else if(strcmp(name.buffer, "getcwd") == 0)
     {
         if(flags & EXECUTE_CAPTURE_OUT) *output = strdup(_skin_cwd);
-        else printf("%s", _skin_cwd);
+        else puts(_skin_cwd);
         goto EXIT;
     }
     else if(strcmp(name.buffer, "getenv") == 0)
     {
         if(num_args == 0) {debug_named("getenv: requires >0 arguments"); retval = -1; goto EXIT;}
-        if(flags & EXECUTE_CAPTURE_OUT)
-        {
-            array_init(&temp_str, num_args * 16);
-        }
+
+        if(flags & EXECUTE_CAPTURE_OUT) {array_init(&temp_str, num_args * 16);}
 
         uint8_t one_not_found = 0;
         array_null_foreach_offset(&args, 1, x)
@@ -307,26 +307,67 @@ execute(
     }
     else if(strcmp(name.buffer, "realpath") == 0)
     {
-        if(num_args < 2) {debug_named("realpath: requires >0 arguments"); retval = -1; goto EXIT;}
-        if(flags & EXECUTE_CAPTURE_OUT)
+        if(num_args == 0) {debug_named("realpath: requires >0 arguments"); retval = -1; goto EXIT;}
+
+        if(flags & EXECUTE_CAPTURE_OUT) {array_init(&temp_str, PATH_MAX);}
+
+        array_null_foreach_offset(&args, 1, a)
         {
-            struct string temp_str = {0};
-            array_init(&temp_str, PATH_MAX);
-            array_null_foreach_offset(&args, 1, a)
+            if(flags & EXECUTE_CAPTURE_OUT)
             {
                 size_t old_size = temp_str.size;
                 temp_str.size += PATH_MAX - (temp_str.capacity - temp_str.size);
                 array_resize(&temp_str);
                 if(realpath(*a, &temp_str.buffer[old_size]) == NULL) {debug_named("realpath: failed to resolve path"); retval = -1; goto EXIT;}
             }
-        }
-        else
-        {
-            array_null_foreach_offset(&args, 1, a)
+            else
             {
-                printf("%s", *a);
+                char temp_str[PATH_MAX] = {0};
+                if(realpath(*a, temp_str) == NULL) {debug_named("realpath: failed to resolve path"); retval = -1; goto EXIT;}
+                puts(temp_str);
             }
         }
+
+        if(flags & EXECUTE_CAPTURE_OUT)
+        {
+            array_push(&temp_str, '\0');
+            *output = temp_str.buffer;
+        }
+        goto EXIT;
+    }
+    else if(strcmp(name.buffer, "glob") == 0)
+    {
+        if(num_args == 0) {debug_named("glob: requires >0 arguments"); retval = -1; goto EXIT;}
+
+        if(flags & EXECUTE_CAPTURE_OUT) {array_init(&temp_str, 128);}
+
+        glob_t pglob = {0};
+        memset(&pglob, 0, sizeof(pglob));
+
+        array_null_foreach_offset(&args, 1, a)
+        {
+            if(glob(*a, 0, NULL, &pglob) != 0) {debug_named("glob: failed to glob directory"); retval = -1; goto EXIT;}
+            for(size_t i = 0; i < pglob.gl_pathc; i++)
+            {
+                if(flags & EXECUTE_CAPTURE_OUT)
+                {
+                    array_concat(&temp_str, pglob.gl_pathv[i], strlen(pglob.gl_pathv[i]));
+                    array_push(&temp_str, '\n'); // TODO: allow for null-sep
+                }
+                else
+                {
+                    puts(pglob.gl_pathv[i]);
+                }
+            }
+            globfree(&pglob);
+        }
+
+        if(flags & EXECUTE_CAPTURE_OUT)
+        {
+            array_push(&temp_str, '\0');
+            *output = temp_str.buffer;
+        }
+        goto EXIT;
     }
     else if(strcmp(name.buffer, "setenv") == 0)
     {
@@ -351,7 +392,7 @@ execute(
     {
         if(num_args != 3) {debug_named("redirect: requires 3 arguments"); retval = -1; goto EXIT;}
         uint8_t found = 0;
-        mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP;
+        mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP;
         if(strcmp(args.buffer[1], "in") == 0)
         {
             found = 1;
@@ -461,10 +502,10 @@ execute(
     }
     else if(strcmp(name.buffer, "exit") == 0)
     {
-        // TODO: clean exit
         pid_t process_ret;
         do
         {
+            // TODO: kill children
             process_ret = wait(NULL);
         } while(process_ret != -1);
         _skin_exit = 1;
@@ -472,21 +513,20 @@ execute(
     }
     else if(strcmp(name.buffer, "concat") == 0)
     {
-        if(flags & EXECUTE_CAPTURE_OUT)
-        {
-            array_init(&temp_str, 32);
-        }
+        if(flags & EXECUTE_CAPTURE_OUT) {array_init(&temp_str, num_args * 8);}
+
         array_null_foreach_offset(&args, 1, x)
         {
             if(flags & EXECUTE_CAPTURE_OUT) {array_concat(&temp_str, *x, strlen(*x));}
             else printf("%s", *x);
         }
-        putchar('\n');
+
         if(flags & EXECUTE_CAPTURE_OUT)
         {
-            array_push(&temp_str, '\0');
+            array_concat(&temp_str, "\n", sizeof("\n"));
             *output = temp_str.buffer;
         }
+        else putchar('\n');
         goto EXIT;
     }
 

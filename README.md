@@ -10,6 +10,7 @@ It is a shell for humans?
 # TODO
 - language
     - return / error codes
+    - return code booleans
     - loops
     - define functions
         - allow functions to work in name position
@@ -25,7 +26,8 @@ It is a shell for humans?
         - autocomplete
 - eval:
     - glob paths
-    - builtins: setenv, (redir)ect to file, bg, fg
+    - builtins: bg, fg
+    - better error messages
 - process signals
     - if process is fg, then send SIGINT
     - usr cancel

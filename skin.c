@@ -50,7 +50,7 @@ struct stdfd
 struct stdfd const _no_override_stdfd = STDFD_NO_OVERRIDE_BASE;
 
 char _skin_cwd[PATH_MAX] = {0};
-char _skin_home[PATH_MAX] = {0};
+char *_skin_home = NULL;
 
 pid_t _skin_fg = 0;
 int _skin_return_code = 0;
@@ -236,6 +236,7 @@ execute(
 
     /* finish */
     // builtin checks
+    // TODO: create_process for pipe
     size_t num_args = args.size - 2;
     if(strcmp(name.buffer, "cd") == 0)
     {
@@ -600,6 +601,7 @@ main(int argc, char **argv)
     setenv("SHELL", shell_path, 1);
 
     if (getcwd(_skin_cwd, sizeof(_skin_cwd)) == NULL) die("unable to get cwd");
+    if ((_skin_home = getenv("HOME")) == NULL) die("unable to get home");
 
     char *prompt = "(printf '(\\n%s\\n$ ) (getcwd))";
     size_t prompt_size = strlen(prompt);

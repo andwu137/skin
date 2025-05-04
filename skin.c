@@ -51,7 +51,8 @@ char _skin_cwd[PATH_MAX] = {0};
 char _skin_home[PATH_MAX] = {0};
 
 pid_t _skin_fg = 0;
-int _return_code = 0;
+int _skin_return_code = 0;
+uint8_t _skin_exit = 0;
 
 /* PROCESSES */
 // WARN: create_process_bg
@@ -190,8 +191,8 @@ execute(
 
     /* parse */
     res = lex_next(ls, &name); // TODO: allow macros
-    if(res == TOKEN_EOF) { retval = 0; goto EXIT; }
-    if(flags & EXECUTE_LPAREN) { if(res != TOKEN_LPAREN) {retval = -1; goto EXIT;} }
+    if(res == TOKEN_EOF) {retval = 0; goto EXIT;}
+    if(flags & EXECUTE_LPAREN) {if(res != TOKEN_LPAREN) {retval = -1; goto EXIT;}}
 
     // name
     if(res == TOKEN_LPAREN) res = lex_next(ls, &name);
@@ -282,19 +283,22 @@ execute(
             array_init(&temp_str, num_args * 16);
         }
 
-        uint8_t found = 0;
+        uint8_t one_not_found = 0;
         array_null_foreach_offset(&args, 1, x)
         {
             char *p = getenv(*x);
-            if(p != NULL)
+            if(p == NULL)
             {
-                if(flags & EXECUTE_CAPTURE_OUT) { array_concat(&temp_str, p, strlen(p)); }
+                one_not_found = 1;
+            }
+            else
+            {
+                if(flags & EXECUTE_CAPTURE_OUT) {array_concat(&temp_str, p, strlen(p));}
                 else puts(p);
-                found = 1;
                 break;
             }
         }
-        if(!found) retval = -1;
+        if(one_not_found) retval = -1;
 
         if(flags & EXECUTE_CAPTURE_OUT)
         {
@@ -381,7 +385,7 @@ execute(
             struct lex_state ls2 = {0};
             lex_init(&ls2, args.buffer[i + 1], strlen(args.buffer[i + 1]));
             pid_arr[i] = execute(&ls2, new_ov_stdfd, NULL, EXECUTE_BACKGROUND);
-            if(pid_arr[i] == -1) { die("failed to pipe"); } // TODO: better resolve
+            if(pid_arr[i] == -1) {die("failed to pipe");} // TODO: better resolve
 
             // reset pipefd_arr to original state
             if(i != 0) pipefd_arr[i - 1].pipefd[0] = temp_fds[0];
@@ -409,7 +413,13 @@ execute(
     else if(strcmp(name.buffer, "exit") == 0)
     {
         // TODO: clean exit
-        exit(0);
+        pid_t process_ret;
+        do
+        {
+            process_ret = wait(NULL);
+        } while(process_ret != -1);
+        _skin_exit = 1;
+        goto EXIT;
     }
     else if(strcmp(name.buffer, "concat") == 0)
     {
@@ -419,7 +429,7 @@ execute(
         }
         array_null_foreach_offset(&args, 1, x)
         {
-            if(flags & EXECUTE_CAPTURE_OUT) { array_concat(&temp_str, *x, strlen(*x)); }
+            if(flags & EXECUTE_CAPTURE_OUT) {array_concat(&temp_str, *x, strlen(*x));}
             else printf("%s", *x);
         }
         putchar('\n');
@@ -554,13 +564,14 @@ main(int argc, char **argv)
     char *line = NULL;
     size_t line_size = 0;
     size_t line_capacity = 0;
-    while((line_size = read_line(prompt, prompt_size, &line, &line_capacity, stdin, stdout)) != -1)
+    while(!_skin_exit
+            && (line_size = read_line(prompt, prompt_size, &line, &line_capacity, stdin, stdout)) != -1)
     {
         lex_init(&ls, line, line_size - 1);
         do
         {
-            _return_code = execute(&ls, _no_override_stdfd, NULL, 0);
-            debug_named("retval: %d", _return_code);
+            _skin_return_code = execute(&ls, _no_override_stdfd, NULL, 0);
+            debug_named("retval: %d", _skin_return_code);
         } while(!lex_isfinished(&ls));
     }
     free(line);

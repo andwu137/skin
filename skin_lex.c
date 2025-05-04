@@ -64,6 +64,7 @@ isident(char c)
                 && c != ')'));
 }
 
+// TODO: escape codes
 int64_t
 lex_next(struct lex_state *restrict ls, struct string *lex_raw)
 {
@@ -150,6 +151,9 @@ lex_next(struct lex_state *restrict ls, struct string *lex_raw)
         }
     }
 
+    if(ls->line_pos + 1 < ls->line_size) return(TOKEN_ERROR);
+
+    ls->line_pos++;
     return(TOKEN_EOF);
 }
 
